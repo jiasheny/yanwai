@@ -97,10 +97,20 @@ class MainActivity : AppCompatActivity() {
             binding.sourcePanel.visibility = if (open) View.VISIBLE else View.GONE
             binding.toggleSource.text = if (open) "免费与开源  ▴" else "免费与开源  ▾"
         }
-        binding.knowledgeSource.setOnClickListener { openHelp(dev.jev.wechatmood.reply.ReplyKnowledge.SOURCE_URL) }
+        val advisors = dev.jev.wechatmood.reply.ReplyAdvisor.entries
+        binding.knowledgeSource.setOnClickListener {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("顾问资料来自开源项目")
+                .setItems(advisors.map { "${it.label} · ${it.note}" }.toTypedArray()) { _, index -> openHelp(advisors[index].sourceUrl) }
+                .setPositiveButton("关闭", null).show()
+        }
         binding.knowledgeLicense.setOnClickListener {
-            com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("狗头军师 · MIT License")
-                .setMessage(assets.open("goutoujunshi/LICENSE").bufferedReader().use { it.readText() })
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("开源许可")
+                .setItems(advisors.map { "${it.label} · MIT License" }.toTypedArray()) { _, index ->
+                    val advisor = advisors[index]
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("${advisor.label} · MIT License")
+                        .setMessage(assets.open(advisor.licenseAsset).bufferedReader().use { it.readText() })
+                        .setPositiveButton("关闭", null).show()
+                }
                 .setPositiveButton("关闭", null).show()
         }
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->

@@ -132,7 +132,7 @@
 - 回复模型支持获取列表、筛选选择和手动填写；各供应商的地址、Key、模型分别保存。
 - 微信「我 → 设置」的插件分组提供「言外设置」入口；也可从桌面应用或长按「＋」横条左侧「分析」打开。
 
-回复方法参考开源项目 **[狗头军师 goutoujunshi](https://github.com/shengjidaguai-china/goutoujunshi)**，按关系选取沟通知识，再由你配置的模型生成建议。随应用保留原作者 Copyright (c) 2026 powerycy 和 MIT 许可。配置细节见[回复建议说明](docs/REPLY_ASSISTANT.md)。
+回复方法参考开源项目 **[狗头军师 goutoujunshi](https://github.com/shengjidaguai-china/goutoujunshi)** 与 **[情圣 qingsheng-skill](https://github.com/tomwong001/qingsheng-skill)**：每个联系人可以选一个顾问，言外按身份和顾问加载对应原始资料，再由你配置的模型生成建议。两套原始资产都完整保留（情圣只有一份整节删除的注入版，删除清单与校验写在 `SOURCE.txt`），分别保留原作者 Copyright (c) 2026 powerycy 和 Copyright (c) 2026 tomwong001 及 MIT 许可。配置细节见[回复建议说明](docs/REPLY_ASSISTANT.md)。
 
 言外不会自动回复或发送微信消息。分析和建议只是理解对话的辅助，不能代表对方的真实想法，也不替你作出决定。
 
@@ -292,6 +292,7 @@ gradle :app:assembleRelease --no-daemon -Pkotlin.compiler.execution.strategy=in-
 - **LSPosed / Xposed、DexKit**：提供模块运行与微信适配所需能力。
 - [WeKit](https://github.com/Ujhhgtg/WeKit)：消息监听、原生语音转写及微信设置入口适配的重要参考。
 - [狗头军师 goutoujunshi](https://github.com/shengjidaguai-china/goutoujunshi)：回复建议所用沟通知识与方法的来源，保留原作者及 MIT 许可。
+- [情圣 qingsheng-skill](https://github.com/tomwong001/qingsheng-skill)：恋爱推进、话术生成与阶段判断资料的来源，固定提交、逐字打包，保留原作者及 MIT 许可。
 
 本项目为独立开发的第三方模块，与微信官方无隶属关系。
 

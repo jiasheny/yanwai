@@ -154,10 +154,10 @@
                     <TextView style="@style/Yanwai.Body" android:layout_marginTop="4dp" android:text="https://github.com/YIRC99/yanwai" android:textColor="@color/brand_primary" android:textIsSelectable="true" />
                     <com.google.android.material.button.MaterialButton android:id="@+id/buttonOpenSource" style="@style/Yanwai.Button.Outline" android:layout_marginTop="8dp" android:text="查看开源代码 ↗" />
                     <TextView style="@style/Yanwai.Caption" android:layout_marginTop="16dp" android:text="理解多一种可能，不替你下结论。\n模型判断仅供参考。" android:gravity="center" />
-                    <TextView style="@style/Yanwai.Section" android:text="回复逻辑来自狗头军师" />
-                    <TextView style="@style/Yanwai.Body" android:text="基于开源项目 goutoujunshi 的回复流程与知识资料。原始知识完整随应用打包，生成时按对方身份选用恋爱、家庭、日常接话等资料，调整口吻并拆成自然短消息。由你配置的模型生成，言外负责上下文和交互适配。" />
-                    <com.google.android.material.button.MaterialButton android:id="@+id/knowledgeSource" style="@style/Yanwai.Button.Outline" android:layout_marginTop="12dp" android:text="了解狗头军师 ↗" />
-                    <TextView style="@style/Yanwai.Caption" android:layout_marginTop="8dp" android:text="MIT License · Copyright (c) 2026 powerycy\n知识版本：6db7354 · 模型建议仅供参考。" />
+                    <TextView style="@style/Yanwai.Section" android:text="回复逻辑来自两套开源顾问" />
+                    <TextView style="@style/Yanwai.Body" android:text="狗头军师（goutoujunshi）与情圣（qingsheng-skill）的原始资料都完整随应用打包，措辞逐字保留。生成时按你选的顾问和对方身份选用对应资料，调整口吻并拆成自然短消息。由你配置的模型生成，言外负责上下文和交互适配。" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/knowledgeSource" style="@style/Yanwai.Button.Outline" android:layout_marginTop="12dp" android:text="查看顾问资料 ↗" />
+                    <TextView style="@style/Yanwai.Caption" android:layout_marginTop="8dp" android:text="MIT License · 狗头军师 Copyright (c) 2026 powerycy\n情圣 Copyright (c) 2026 tomwong001 · 模型建议仅供参考。" />
                     <com.google.android.material.button.MaterialButton android:id="@+id/knowledgeLicense" style="@style/Yanwai.Button.Text" android:text="查看开源许可" />
                 </LinearLayout>
             </LinearLayout>

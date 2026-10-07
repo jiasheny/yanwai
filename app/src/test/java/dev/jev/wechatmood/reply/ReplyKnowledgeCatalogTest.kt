@@ -48,7 +48,9 @@ class ReplyKnowledgeCatalogTest {
         ReplyAdvisor.entries.forEach {
             assertTrue(it.sourceUrl.startsWith("https://github.com/"))
             assertTrue(it.revision.matches(Regex("[0-9a-f]{40}")))
-            assertTrue(it.label.isNotBlank() && it.note.isNotBlank())
+            assertTrue(it.label.isNotBlank() && it.note.isNotBlank() && it.shortLabel.isNotBlank())
+            assertTrue(it.shortLabel.length <= 4)
+            assertTrue("Missing license for ${it.label}", File(assets, it.licenseAsset).readText().contains("MIT License"))
         }
     }
 

@@ -4,9 +4,6 @@ import android.content.Context
 
 /** Original MIT sources are bundled, pinned and read locally, never fetched at chat time. */
 object ReplyKnowledge {
-    /** Primary source kept for the settings link; per-source metadata lives in [ReplyAdvisor]. */
-    val SOURCE_URL: String get() = ReplyAdvisor.JUNSHI.sourceUrl
-    val REVISION: String get() = ReplyAdvisor.JUNSHI.revision
     private val cached = mutableMapOf<Pair<ReplyAdvisor, ReplyRelationship>, String>()
 
     @Synchronized fun load(context: Context, relationship: ReplyRelationship = ReplyRelationship.UNSPECIFIED,

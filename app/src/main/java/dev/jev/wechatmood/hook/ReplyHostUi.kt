@@ -12,6 +12,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.text.InputFilter
+import android.net.Uri
 import android.text.InputType
 import android.text.Editable
 import android.text.TextWatcher
@@ -181,10 +182,11 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
         body.addView(View(activity).apply { background = theme.shape(theme.border, 2) },
             LinearLayout.LayoutParams(dp(32), dp(4)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(6) })
         val heading = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
+        val subtitle = theme.label("", 11f, theme.muted).apply { isClickable = true; isFocusable = true }
         val title = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             addView(theme.label("帮我回", 18f, bold = true))
-            addView(theme.label("言外 ${BuildConfig.VERSION_NAME} · 狗头军师", 11f, theme.muted))
+            addView(subtitle)
         }
         heading.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
         heading.addView(action("关闭", quiet = true) { window.dismiss() }, LinearLayout.LayoutParams(dp(56), dp(48)))
@@ -196,12 +198,15 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
         val roleRow = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
         fun roleLabel() = if (composition.relationship == ReplyRelationship.UNSPECIFIED) "选择对方身份 ▾"
             else "${composition.relationship.displayLabel(composition.customRelationship)} ▾"
+        fun advisorLabel() = "${composition.advisor.shortLabel} ▾"
         val rolePicker = action(roleLabel()).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
         rolePicker.contentDescription = "选择对方身份，当前${composition.relationship.displayLabel(composition.customRelationship)}"
-        val historyPicker = action("参考最近 ${composition.historyLimit} 条 ▾")
-        listOf(rolePicker, historyPicker).forEach { it.textSize = 13f; it.setPadding(dp(8), dp(6), dp(8), dp(6)) }
-        roleRow.addView(rolePicker, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
-        roleRow.addView(historyPicker, LinearLayout.LayoutParams(0, -2, 1.2f))
+        val advisorPicker = action(advisorLabel()).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        val historyPicker = action("最近 ${composition.historyLimit} 条 ▾")
+        listOf(rolePicker, advisorPicker, historyPicker).forEach { it.textSize = 13f; it.setPadding(dp(8), dp(6), dp(8), dp(6)) }
+        roleRow.addView(rolePicker, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(6) })
+        roleRow.addView(advisorPicker, LinearLayout.LayoutParams(0, -2, 0.85f).apply { rightMargin = dp(6) })
+        roleRow.addView(historyPicker, LinearLayout.LayoutParams(0, -2, 1.15f))
         results.addView(roleRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
         var roleExpanded = composition.relationship == ReplyRelationship.OTHER && composition.customRelationship.isBlank()
         var instructionExpanded = false
@@ -391,14 +396,19 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             saveIdentityButton.text = if (identitySaving) "保存中…" else "保存角色"
             rolePicker.text = roleLabel()
             rolePicker.contentDescription = "选择对方身份，当前${composition.relationship.displayLabel(composition.customRelationship)}"
+            advisorPicker.isEnabled = !generating
+            advisorPicker.text = advisorLabel()
+            advisorPicker.contentDescription = "选择回复顾问，当前${composition.advisor.label}"
+            subtitle.text = "言外 ${BuildConfig.VERSION_NAME} · ${composition.advisor.label} ▾"
+            subtitle.contentDescription = "切换回复顾问，当前${composition.advisor.label}"
             historyPicker.isEnabled = !generating
-            historyPicker.text = "参考最近 ${composition.historyLimit} 条 ▾"
+            historyPicker.text = "最近 ${composition.historyLimit} 条 ▾"
             historyPicker.contentDescription = "选择参考聊天消息条数，当前最近 ${composition.historyLimit} 条"
             copy.isEnabled = !generating && !reading && composition.canUse
             copy.text = "复制这条"
             footerActions.visibility = if (composition.result == null) View.GONE else View.VISIBLE
             footerHint.visibility = footerActions.visibility
-            footerHint.text = if (!composition.canUse) "身份、背景或参考范围已改变，请重新生成"
+            footerHint.text = if (!composition.canUse) "顾问、身份、背景或参考范围已改变，请重新生成"
                 else "复制后，请自行粘贴到聊天框发送"
             state.visibility = if (state.text.isBlank()) View.GONE else View.VISIBLE
             if (window.isShowing) fitWindow()
@@ -425,7 +435,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             topicTitle.text = batch?.current?.title.orEmpty()
             topicTitle.visibility = if (batch == null) View.GONE else View.VISIBLE
             val kind = if (batch == null) "${result?.suggestion?.parts?.size ?: 0} 条建议" else "话题 ${batch.shownCount} / ${batch.items.size}"
-            replyTitle.text = result?.let { "${it.relationship.displayLabel(it.customRelationship)} · $kind${if (!composition.canUse) "（上次结果）" else ""} · 查看依据 ›" }.orEmpty()
+            replyTitle.text = result?.let { "${it.advisor.shortLabel} · ${it.relationship.displayLabel(it.customRelationship)} · $kind${if (!composition.canUse) "（上次结果）" else ""} · 查看依据 ›" }.orEmpty()
             result?.suggestion?.parts?.forEachIndexed { index, text ->
                 val selected = composition.selectedPart == index
                 val row = LinearLayout(activity).apply {
@@ -506,6 +516,41 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
                 failed = false; renderParts(); controls(busy)
             }
         })
+        fun openSource(url: String) {
+            runCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                .onFailure { toast("没有可以打开这个链接的应用") }
+        }
+        /**
+         * Switching the advisor only changes which original material a later request loads. It never
+         * starts a request, and it is saved with the rest of the contact identity.
+         */
+        fun showAdvisorMenu() {
+            PopupMenu(activity, advisorPicker).apply {
+                ReplyAdvisor.entries.forEach { advisor ->
+                    menu.add(0, advisor.ordinal, advisor.ordinal, "${advisor.label} · ${advisor.note}").isChecked =
+                        advisor == composition.advisor
+                }
+                menu.setGroupCheckable(0, true, true)
+                menu.add(1, 0, 0, "查看来源 ↗")
+                setOnMenuItemClickListener { item ->
+                    if (item.groupId == 1) {
+                        openSource(composition.advisor.sourceUrl)
+                        return@setOnMenuItemClickListener true
+                    }
+                    if (busy || !ownsDrawer()) return@setOnMenuItemClickListener true
+                    val picked = ReplyAdvisor.entries[item.itemId]
+                    if (picked != composition.advisor) {
+                        composition.advisor = picked
+                        failed = false
+                        renderParts(); controls(false)
+                        if (!group && owner.key != null) saveIdentity()
+                    }
+                    true
+                }
+            }.show()
+        }
+        advisorPicker.setOnClickListener { if (!busy && ownsDrawer()) showAdvisorMenu() }
+        subtitle.setOnClickListener { if (!busy && ownsDrawer()) showAdvisorMenu() }
         fun showRoleMenu(savedRoles: List<ReplyRole>, libraryAvailable: Boolean = true) {
             PopupMenu(activity, rolePicker).apply {
                 // Persisted presets and custom roles share the app's catalog; never resurrect deleted presets.
@@ -530,6 +575,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
                                     selectedIdentity = applied.identity
                                     composition.relationship = applied.identity.relationship
                                     composition.customRelationship = applied.identity.customText
+                                    composition.advisor = applied.identity.advisor
                                     composition.background = applied.background
                                     identityBackground.setText(applied.background.text)
                                     customRole.setText(applied.identity.customText)
