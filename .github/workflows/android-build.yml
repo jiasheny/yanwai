@@ -1,0 +1,87 @@
+name: Android build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+
+      # No gradle wrapper is committed on purpose, so the pinned distribution
+      # is provided by the action instead of a repo binary.
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      # A debug keystore is generated per machine. Caching it keeps the debug
+      # signature stable across runs, so a new APK can be installed over the
+      # previous one without uninstalling first.
+      - name: Keep a stable debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
+      - name: Unit tests and debug build
+        run: |
+          gradle :app:testDebugUnitTest :app:assembleDebug \
+            --stacktrace -Pkotlin.compiler.execution.strategy=in-process
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: yanwai-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yanwai-test-reports
+          path: app/build/reports/tests/**
+          if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: yanwai-debug-apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.apk"
+          generate_release_notes: true
