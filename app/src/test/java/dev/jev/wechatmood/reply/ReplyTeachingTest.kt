@@ -123,4 +123,15 @@ class ReplyTeachingTest {
         assertTrue(composer.result!!.teaching.isEmpty)
         assertEquals("好呀", composer.selectedText)
     }
+
+    @Test fun `reopening an analysis-only result stays safe with no messages`() {
+        val composer = ReplyComposition()
+        assertTrue(composer.accept(context, ReplyOutcome(ReplySuggestion(emptyList(), "先看信号")), "", null,
+            ReplyRelationship.UNSPECIFIED))
+        val reopened = ReplyComposition(composer.result)
+        assertEquals(0, reopened.selectedPart)
+        assertNull(reopened.selectedText)
+        assertEquals("", reopened.previousText)
+        assertThrows(IllegalArgumentException::class.java) { reopened.select(0) }
+    }
 }

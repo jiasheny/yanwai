@@ -43,9 +43,9 @@ class ReplyProtocolTest {
 
     @Test fun `short messages stay ordered and are not alternatives or one merged reply`() {
         val result = ReplyProtocol.parse(envelope("""{"replies":[" 好呀 ","周六下午怎么样？"],"reason":"先回应再确认时间"}"""))
-        assertEquals(listOf("好呀", "周六下午怎么样？"), result.parts)
+        assertEquals(listOf("好呀", "周六下午怎么样？"), result.suggestion.parts)
         assertEquals("好呀\n周六下午怎么样？", result.text)
-        assertEquals(listOf("好的"), ReplyProtocol.parse(envelope("""{"reply":"好的"}""")).parts)
+        assertEquals(listOf("好的"), ReplyProtocol.parse(envelope("""{"reply":"好的"}""")).suggestion.parts)
     }
 
     @Test fun `malformed segments never fall back to a misleading partial reply`() {
@@ -65,7 +65,7 @@ class ReplyProtocolTest {
             val config = ReplySettings.fromInput(server.url("/v1").toString(), "secret", "m")
             val result = ReplyHttpClient().generate(config, context, "", "别太正式", "家庭资料",
                 relationship = ReplyRelationship.YOUNGER_SIBLING)
-            assertEquals(listOf("嗯好", "你也早点休息"), result.parts)
+            assertEquals(listOf("嗯好", "你也早点休息"), result.suggestion.parts)
             val messages = JSONObject(server.takeRequest().body.readUtf8()).getJSONArray("messages")
             val input = JSONObject(messages.getJSONObject(1).getString("content"))
             assertEquals("younger_sibling", input.getJSONObject("relationship").getString("id"))

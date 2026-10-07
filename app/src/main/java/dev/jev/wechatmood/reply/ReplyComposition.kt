@@ -10,7 +10,8 @@ class ReplyComposition(remembered: RememberedReply? = null, identity: ReplyIdent
     val hasValidRelationship: Boolean get() = relationship != ReplyRelationship.OTHER || activeCustomRelationship.isNotBlank()
     var historyLimit = preferredLimit.also { require(ReplyHistoryLimit.valid(it)) }
         set(value) { require(ReplyHistoryLimit.valid(value)); field = value }
-    var result: RememberedReply? = remembered?.copy(selectedPart = remembered.selectedPart.coerceIn(0, remembered.suggestion.parts.lastIndex))
+    var result: RememberedReply? = remembered?.copy(selectedPart = if (remembered.suggestion.parts.isEmpty()) 0
+        else remembered.selectedPart.coerceIn(0, remembered.suggestion.parts.lastIndex))
         private set
     val selectedPart: Int get() = result?.selectedPart ?: 0
     val canUse: Boolean get() = hasValidRelationship && result?.context?.background == background && result?.relationship == relationship &&

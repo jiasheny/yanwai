@@ -165,10 +165,10 @@ class ReplySettingsUi(private val activity: AppCompatActivity, private val bindi
                 val example = ReplyContext("sample", listOf(
                     ReplyMessage(1, "我", System.currentTimeMillis() - 60000, "最近忙完了，周末想出去走走。"),
                     ReplyMessage(2, "对方", System.currentTimeMillis(), "好呀，你有什么想去的地方吗？")))
-                val suggestion = ReplyHttpClient().generate(settings, example, "想去公园", "自然简短", knowledge)
+                val outcome = ReplyHttpClient().generate(settings, example, "想去公园", "自然简短", knowledge)
                 status("回复连接成功 · 可手动生成", R.color.status_success)
-                val preview = suggestion.parts.mapIndexed { index, text -> "${index + 1}. $text" }.joinToString("\n\n")
-                result("示例回复（${suggestion.parts.size} 条）：\n$preview\n\n${suggestion.reason}\n\n接口和回复格式可用，聊天入口请在微信中体验。")
+                val preview = outcome.suggestion.parts.mapIndexed { index, text -> "${index + 1}. $text" }.joinToString("\n\n")
+                result("示例回复（${outcome.suggestion.parts.size} 条）：\n$preview\n\n${outcome.suggestion.reason}\n\n接口和回复格式可用，聊天入口请在微信中体验。")
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { status("检测失败", R.color.status_error); result(e.message ?: "检测失败，请重试", true) }
             finally { setBusy(false) }
