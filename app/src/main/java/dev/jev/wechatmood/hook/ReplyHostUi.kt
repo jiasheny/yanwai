@@ -331,6 +331,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
         var findingTopics = false
         var applyingRole = false
         var identitySaving = false
+        var cardHits: Int? = null
         fun hasUnsavedIdentityBackground() = !group && composition.relationship != ReplyRelationship.UNSPECIFIED &&
             (identityBackground.text.toString() != composition.background.text ||
                 composition.relationship != selectedIdentity.relationship ||
@@ -475,8 +476,29 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
                 if (compare.verdict.isNotBlank()) teachingBlock.addView(note(compare.verdict, muted = true))
                 compare.score?.let { teachingBlock.addView(note("这份草稿：$it / 10", muted = true)) }
             }
-            if (result.teaching.drill.isNotBlank()) teachingBlock.addView(note("记住一句：${result.teaching.drill}"))
+            if (result.teaching.drill.isNotBlank()) {
+                val seen = cardHits?.takeIf { it > 1 }?.let { "（第 $it 次遇到）" }.orEmpty()
+                teachingBlock.addView(note("记住一句：${result.teaching.drill}$seen"))
+            }
             if (result.teaching.watch.isNotBlank()) teachingBlock.addView(note("下次观察：${result.teaching.watch}", muted = true))
+        }
+        /**
+         * Storing a card is a side effect of a good answer. Seeing the same principle again raises
+         * its hit count, which is what later tells the review page which lessons keep applying.
+         */
+        fun recordCard(context: ReplyContext, advisor: ReplyAdvisor) {
+            val drill = composition.result?.teaching?.drill.orEmpty()
+            if (drill.isBlank()) return
+            val anchor = context.messages.lastOrNull()?.text.orEmpty().take(80)
+            scope.launch {
+                val hits = withContext(Dispatchers.IO) {
+                    runCatching { ReplyIdentityBridge.recordCard(activity, drill, anchor, advisor.id) }.getOrNull()
+                }
+                if (hits != null && ownsDrawer() && composition.result?.teaching?.drill == drill) {
+                    cardHits = hits
+                    renderTeaching(composition.result)
+                }
+            }
         }
         fun renderParts() {
             parts.removeAllViews()
@@ -864,7 +886,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             val previous = if (composition.result?.topics == null) composition.previousText else ""
             val previousTopics = composition.result?.takeIf { composition.canUse }?.topics?.items.orEmpty()
             state.text = ""; state.setTextColor(theme.muted)
-            failed = false; findingTopics = findTopics
+            failed = false; findingTopics = findTopics; cardHits = null
             collapseEditors()
             (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
                 ?.hideSoftInputFromWindow(instruction.windowToken, 0)
@@ -899,6 +921,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
                     state.text = ""
                     revealReply()
                     remember(); updateNotice()
+                    recordCard(current, advisor)
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) {
                     if (session.accepts(ticket, MessageSniffer.currentReplyTalker()) && ownsDrawer()) {

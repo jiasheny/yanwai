@@ -127,6 +127,27 @@ object ReplyIdentityBridge {
                 if (c.isActive) c.resumeWith(result)
             }
         }
+    /**
+     * Best effort on purpose: storing a card is a side effect of a good answer, so a failure here
+     * returns null and never fails the reply it came from.
+     */
+    suspend fun recordCard(context: Context, principle: String, evidence: String, source: String): Int? {
+        val captured = runCatching { generation() }.getOrNull() ?: return null
+        return suspendCancellableCoroutine { c ->
+            worker.execute {
+                val result = runCatching {
+                    val response = requireNotNull(SettingsTransport.call(context.applicationContext, "learn_card_put", null,
+                        Bundle().apply {
+                            putString(SettingsProvider.KEY_GENERATION, captured.generation)
+                            putString("principle", principle); putString("evidence", evidence); putString("source", source)
+                        }))
+                    check(response.getBoolean("saved")) { "卡片未保存" }
+                    response.getInt("hits")
+                }
+                if (c.isActive) c.resumeWith(result)
+            }
+        }
+    }
     private fun queue(context: Context): ReplyIdentityQueue {
         val captured = generation()
         fun extras() = Bundle().apply {

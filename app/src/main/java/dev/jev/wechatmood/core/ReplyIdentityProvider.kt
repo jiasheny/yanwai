@@ -35,7 +35,8 @@ object ReplyIdentityProvider {
     @Synchronized fun deleteRole(context: Context, role: ReplyRole) = storage(context).roles.delete(role.id, role.revision)
 
     @Synchronized fun call(context: Context, caller: Int, method: String, arg: String?, extras: Bundle?): Bundle {
-        if (method.startsWith("contact_background_") || method.startsWith("reply_role_") || extras?.containsKey(SettingsProvider.KEY_GENERATION) == true) {
+        if (method.startsWith("learn_card_") || method.startsWith("contact_background_") || method.startsWith("reply_role_") ||
+            extras?.containsKey(SettingsProvider.KEY_GENERATION) == true) {
             val generation = context.getSharedPreferences(ModulePrefs.FILE_NAME, 0).getString(SettingsProvider.KEY_GENERATION, null)
             check(generation != null && extras?.getString(SettingsProvider.KEY_GENERATION) == generation) { "设置已重置，请重新打开" }
         }
@@ -44,6 +45,15 @@ object ReplyIdentityProvider {
         }
         if (method == "reply_role_list") return Bundle().apply {
             putStringArrayList("roles", ArrayList(storage(context).roles.templates().map { it.encode(includeBackground = false) }))
+        }
+        // Cards are not bound to a contact, so this branch never asks for a contact key.
+        if (method == "learn_card_put") {
+            val card = storage(context).cards.record(requireNotNull(extras?.getString("principle")),
+                extras?.getString("evidence").orEmpty(), extras?.getString("source").orEmpty(), System.currentTimeMillis())
+            return Bundle().apply {
+                putBoolean("saved", card != null)
+                if (card != null) { putInt("hits", card.hits); putString("card_id", card.id) }
+            }
         }
         val requested = ReplyContactKey(requireNotNull(arg))
         val key = ReplyContactKey(AnalysisCacheKey.digest(caller.toString(), requested.value))
