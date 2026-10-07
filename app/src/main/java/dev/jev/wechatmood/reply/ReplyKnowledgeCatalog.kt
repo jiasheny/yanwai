@@ -2,7 +2,12 @@ package dev.jev.wechatmood.reply
 
 /** Keep all upstream assets intact; load the relevant original references for this request. */
 object ReplyKnowledgeCatalog {
-    fun paths(relationship: ReplyRelationship): List<String> {
+    fun paths(advisor: ReplyAdvisor, relationship: ReplyRelationship): List<String> = when (advisor) {
+        ReplyAdvisor.JUNSHI -> junshi(relationship)
+        ReplyAdvisor.QINGSHENG -> qingsheng(relationship)
+    }
+
+    private fun junshi(relationship: ReplyRelationship): List<String> {
         val common = listOf("goutoujunshi/SKILL.md",
             "goutoujunshi/references/practical/实战话术编排器：从一句回复到后续分支.md",
             "goutoujunshi/references/practical/巧妙接话技巧：让沟通更流畅的实用指南.md")
@@ -21,5 +26,20 @@ object ReplyKnowledgeCatalog {
             ReplyRelationship.UNSPECIFIED, ReplyRelationship.OTHER -> emptyList()
         }
         return common + specific.map { "goutoujunshi/references/$it" }
+    }
+
+    /**
+     * Every route loads the verbatim upstream skill plus one or two references. The slice files are
+     * cut from the upstream example library by its own stage headings, never rewritten.
+     */
+    private fun qingsheng(relationship: ReplyRelationship): List<String> {
+        val common = listOf("qingsheng/skill.md")
+        val specific = when (relationship) {
+            ReplyRelationship.CRUSH -> listOf("refs/stages.md", "slices/examples-stage1-2.md")
+            ReplyRelationship.FLIRT -> listOf("refs/signals-tools.md", "slices/examples-stage3-4.md")
+            ReplyRelationship.PARTNER -> listOf("refs/mindset-concepts.md", "refs/recovery-playbook.md")
+            else -> listOf("refs/stages.md", "slices/examples-stage1-2.md")
+        }
+        return common + specific.map { "qingsheng/$it" }
     }
 }
