@@ -5,7 +5,7 @@ import dev.jev.wechatmood.core.AnalysisCacheKey
 import org.json.JSONObject
 
 /** One principle worth remembering, with the situation it first showed up in. */
-class LearnCard(val id: String, val principle: String, val evidence: String, val source: String,
+data class LearnCard(val id: String, val principle: String, val evidence: String, val source: String,
     val hits: Int, val box: Int, val dueAt: Long, val updatedAt: Long) {
     init {
         require(id.matches(Regex("[0-9a-f]{64}")))
