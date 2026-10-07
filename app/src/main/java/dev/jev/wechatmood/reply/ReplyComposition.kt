@@ -16,7 +16,7 @@ class ReplyComposition(remembered: RememberedReply? = null, identity: ReplyIdent
     val canUse: Boolean get() = hasValidRelationship && result?.context?.background == background && result?.relationship == relationship &&
         result?.customRelationship == activeCustomRelationship && result?.context?.requestedMessages == historyLimit &&
         result?.advisor == advisor
-    val selectedText: String? get() = result?.takeIf { canUse }?.suggestion?.parts?.get(selectedPart)
+    val selectedText: String? get() = result?.takeIf { canUse }?.suggestion?.parts?.getOrNull(selectedPart)
     val previousText: String get() = result?.takeIf { canUse }?.suggestion?.text.orEmpty()
 
     fun select(index: Int) {
@@ -25,13 +25,20 @@ class ReplyComposition(remembered: RememberedReply? = null, identity: ReplyIdent
         result = current.copy(selectedPart = index)
     }
 
+    /** Convenience for callers that only have messages; teaching modes use the outcome overload. */
     fun accept(context: ReplyContext, suggestion: ReplySuggestion, direction: String, focusMessageId: Long?,
+        requestedRelationship: ReplyRelationship, requestedCustomRelationship: String = "",
+        requestedAdvisor: ReplyAdvisor = advisor): Boolean =
+        accept(context, ReplyOutcome(suggestion), direction, focusMessageId, requestedRelationship,
+            requestedCustomRelationship, requestedAdvisor)
+
+    fun accept(context: ReplyContext, outcome: ReplyOutcome, direction: String, focusMessageId: Long?,
         requestedRelationship: ReplyRelationship, requestedCustomRelationship: String = "",
         requestedAdvisor: ReplyAdvisor = advisor): Boolean {
         if (!hasValidRelationship || context.background != background || requestedRelationship != relationship || context.requestedMessages != historyLimit ||
             requestedRelationship.customValue(requestedCustomRelationship) != activeCustomRelationship || requestedAdvisor != advisor) return false
-        result = RememberedReply(context, suggestion, direction, focusMessageId, requestedRelationship,
-            customRelationship = activeCustomRelationship, advisor = advisor)
+        result = RememberedReply(context, outcome.suggestion, direction, focusMessageId, requestedRelationship,
+            customRelationship = activeCustomRelationship, advisor = advisor, teaching = outcome.teaching)
         return true
     }
 

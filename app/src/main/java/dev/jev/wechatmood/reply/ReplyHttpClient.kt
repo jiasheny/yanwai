@@ -14,10 +14,13 @@ class ReplyHttpClient(private val client: Call.Factory = OkHttpClient.Builder()
     suspend fun generate(settings: ReplySettings, context: ReplyContext, draft: String, direction: String,
         knowledge: String, previous: String = "", focusMessageId: Long? = null,
         relationship: ReplyRelationship = ReplyRelationship.UNSPECIFIED, customRelationship: String = "",
-        advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT): ReplySuggestion {
+        advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT, mode: ReplyMode = ReplyMode.DEFAULT,
+        myDraft: String = ""): ReplyOutcome {
         check(settings.isConfigured) { "请先在言外的「回复建议」中保存地址、API Key 和模型名" }
-        val payload = ReplyProtocol.payload(settings, context, draft, direction, knowledge, previous, focusMessageId, relationship, customRelationship, advisor)
-        return request(settings, payload, ReplyProtocol::parse)
+        val payload = ReplyProtocol.payload(settings, context, draft, direction, knowledge, previous, focusMessageId,
+            relationship, customRelationship, advisor, mode, myDraft)
+        val expectCompare = mode == ReplyMode.GRADE || (mode == ReplyMode.PREDICT && myDraft.isNotBlank())
+        return request(settings, payload) { ReplyProtocol.parse(it, mode, expectCompare) }
     }
 
     suspend fun findTopics(settings: ReplySettings, context: ReplyContext, draft: String, notes: String,

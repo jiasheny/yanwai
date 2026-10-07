@@ -210,14 +210,17 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
         results.addView(roleRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
         var roleExpanded = composition.relationship == ReplyRelationship.OTHER && composition.customRelationship.isBlank()
         var instructionExpanded = false
+        var mode = ReplyMode.DEFAULT
         val roleToggle = action("角色背景 ▾", quiet = true)
         val instructionToggle = action("本次补充 ▾", quiet = true)
+        val modeToggle = action("${mode.shortLabel} ▾", quiet = true)
         val disclosureRow = LinearLayout(activity)
-        listOf(roleToggle, instructionToggle).forEachIndexed { index, toggle ->
+        listOf(roleToggle, instructionToggle, modeToggle).forEachIndexed { index, toggle ->
             toggle.textSize = 12f; toggle.gravity = Gravity.START or Gravity.CENTER_VERTICAL
             toggle.maxLines = 2; toggle.ellipsize = android.text.TextUtils.TruncateAt.END
             toggle.setPadding(dp(4), dp(4), dp(4), dp(4))
-            disclosureRow.addView(toggle, LinearLayout.LayoutParams(0, -2, 1f).apply { if (index == 0) rightMargin = dp(8) })
+            val weight = if (index == 2) 0.7f else 1.15f
+            disclosureRow.addView(toggle, LinearLayout.LayoutParams(0, -2, weight).apply { if (index < 2) rightMargin = dp(8) })
         }
         results.addView(disclosureRow)
         val roleEditor = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
@@ -256,6 +259,17 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             setOnFocusChangeListener { _, focused -> background = theme.shape(theme.card, 12, if (focused) theme.accent else theme.border) }
         }
         results.addView(instruction, LinearLayout.LayoutParams(-1, -2))
+        val draftAttempt = EditText(activity).apply {
+            hint = "你会怎么回？先写一条，再看对比"
+            textSize = 14f; setTextColor(theme.ink); setHintTextColor(theme.muted)
+            gravity = Gravity.TOP or Gravity.START; minLines = 2; maxLines = 4; minHeight = dp(48)
+            setPadding(dp(10), dp(10), dp(10), dp(10)); background = theme.shape(theme.card, 12, theme.border)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            filters = arrayOf(InputFilter.LengthFilter(2000)); isSaveEnabled = false
+            visibility = if (mode.wantsDraft) View.VISIBLE else View.GONE
+            setOnFocusChangeListener { _, focused -> background = theme.shape(theme.card, 12, if (focused) theme.accent else theme.border) }
+        }
+        results.addView(draftAttempt, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         val generateButton = action("生成回复", primary = true)
         val topicButton = action("找找话题")
         val shorter = action("更简短", quiet = true)
@@ -278,6 +292,8 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             textSize = 12f; gravity = Gravity.START or Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, 0)
         }
         results.addView(replyTitle)
+        val teachingBlock = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        results.addView(teachingBlock)
         val topicTitle = theme.label("", 14f, bold = true)
         results.addView(topicTitle)
         val parts = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
@@ -324,7 +340,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
         fun preview(text: CharSequence, empty: String) = text.toString().trim().replace(Regex("\\s+"), " ").take(22).ifBlank { empty }
         fun collapseEditors() {
             roleExpanded = false; instructionExpanded = false
-            if (customRole.hasFocus() || identityBackground.hasFocus() || instruction.hasFocus()) {
+            if (customRole.hasFocus() || identityBackground.hasFocus() || instruction.hasFocus() || draftAttempt.hasFocus()) {
                 body.requestFocus()
                 (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
                     ?.hideSoftInputFromWindow(body.windowToken, 0)
@@ -388,6 +404,11 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             instructionToggle.text = "本次补充 ${if (instructionExpanded) "▴" else "▾"}\n" + preview(instruction.text, "可选，点此填写")
             roleToggle.contentDescription = "$roleSectionTitle，${if (roleExpanded) "已展开，点击收起" else "已收起，点击展开"}"
             instructionToggle.contentDescription = "本次补充，${if (instructionExpanded) "已展开，点击收起" else "已收起，点击展开"}"
+            modeToggle.text = "${mode.shortLabel} ▾"
+            modeToggle.isEnabled = !generating
+            modeToggle.contentDescription = "选择回复模式，当前${mode.label}"
+            draftAttempt.visibility = if (mode.wantsDraft) View.VISIBLE else View.GONE
+            generateButton.text = if (mode == ReplyMode.READ) "只看拆解" else "生成回复"
             generateButton.contentDescription = "${generateButton.text}，已读取 ${ready?.messages?.size ?: 0} 条消息"
             identityBackground.visibility = if (editingIdentity) View.VISIBLE else View.GONE
             saveIdentityButton.visibility = if (!group && composition.relationship != ReplyRelationship.UNSPECIFIED) View.VISIBLE else View.GONE
@@ -404,12 +425,15 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             historyPicker.isEnabled = !generating
             historyPicker.text = "最近 ${composition.historyLimit} 条 ▾"
             historyPicker.contentDescription = "选择参考聊天消息条数，当前最近 ${composition.historyLimit} 条"
-            copy.isEnabled = !generating && !reading && composition.canUse
+            copy.isEnabled = !generating && !reading && composition.canUse && composition.selectedText != null
             copy.text = "复制这条"
             footerActions.visibility = if (composition.result == null) View.GONE else View.VISIBLE
             footerHint.visibility = footerActions.visibility
-            footerHint.text = if (!composition.canUse) "顾问、身份、背景或参考范围已改变，请重新生成"
-                else "复制后，请自行粘贴到聊天框发送"
+            footerHint.text = when {
+                !composition.canUse -> "顾问、身份、背景或参考范围已改变，请重新生成"
+                composition.selectedText == null -> "这一步留给你：写好回法后，用「先猜后给」或「批改」生成对比"
+                else -> "复制后，请自行粘贴到聊天框发送"
+            }
             state.visibility = if (state.text.isBlank()) View.GONE else View.VISIBLE
             if (window.isShowing) fitWindow()
         }
@@ -427,6 +451,33 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             collapseEditors(); controls(false)
             scroll.post { if (ownsDrawer()) scroll.smoothScrollTo(0, replyTitle.top) }
         }
+        fun note(text: String, muted: Boolean = false) = theme.label(text, 13f, if (muted) theme.muted else theme.ink)
+            .apply { setPadding(dp(12), dp(2), dp(12), dp(2)) }
+        /** The steps always appear in the same order: repeating the structure is what makes it stick. */
+        fun renderTeaching(result: RememberedReply?) {
+            teachingBlock.removeAllViews()
+            if (result == null || !composition.canUse) return
+            result.teaching.analysis?.let { analysis ->
+                teachingBlock.addView(note("① 事实", muted = true))
+                analysis.facts.forEach { teachingBlock.addView(note("· $it")) }
+                if (analysis.guess.isNotEmpty()) {
+                    teachingBlock.addView(note("② 推测", muted = true))
+                    analysis.guess.forEach { teachingBlock.addView(note("· 可能是：$it")) }
+                }
+                teachingBlock.addView(note("③ 互动目的：${analysis.purpose}", muted = true))
+                teachingBlock.addView(note("④ 阶段：${analysis.stage}${if (analysis.trend.isBlank()) "" else "，${analysis.trend}"}", muted = true))
+                teachingBlock.addView(note("⑤ 她此刻想被怎么回应：${analysis.herNeed}", muted = true))
+                if (analysis.myGoal.isNotBlank()) teachingBlock.addView(note("　　我这次想达成：${analysis.myGoal}", muted = true))
+            }
+            result.teaching.compare?.let { compare ->
+                teachingBlock.addView(note("你的回法对的地方：${compare.keep.joinToString("；")}", muted = true))
+                compare.fix.forEachIndexed { index, fix -> teachingBlock.addView(note("改法 ${index + 1}：$fix")) }
+                if (compare.verdict.isNotBlank()) teachingBlock.addView(note(compare.verdict, muted = true))
+                compare.score?.let { teachingBlock.addView(note("这份草稿：$it / 10", muted = true)) }
+            }
+            if (result.teaching.drill.isNotBlank()) teachingBlock.addView(note("记住一句：${result.teaching.drill}"))
+            if (result.teaching.watch.isNotBlank()) teachingBlock.addView(note("下次观察：${result.teaching.watch}", muted = true))
+        }
         fun renderParts() {
             parts.removeAllViews()
             val result = composition.result
@@ -434,8 +485,16 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             val batch = result?.topics
             topicTitle.text = batch?.current?.title.orEmpty()
             topicTitle.visibility = if (batch == null) View.GONE else View.VISIBLE
-            val kind = if (batch == null) "${result?.suggestion?.parts?.size ?: 0} 条建议" else "话题 ${batch.shownCount} / ${batch.items.size}"
+            val count = result?.suggestion?.parts?.size ?: 0
+            val kind = if (batch != null) "话题 ${batch.shownCount} / ${batch.items.size}"
+                else if (count == 0) "只拆解" else "$count 条建议"
             replyTitle.text = result?.let { "${it.advisor.shortLabel} · ${it.relationship.displayLabel(it.customRelationship)} · $kind${if (!composition.canUse) "（上次结果）" else ""} · 查看依据 ›" }.orEmpty()
+            renderTeaching(result)
+            if (count == 0 && batch == null && result != null) {
+                parts.addView(note("这条先别急着发。自己写一条，再用「先猜后给」或「批改」生成对比。").apply {
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                })
+            }
             result?.suggestion?.parts?.forEachIndexed { index, text ->
                 val selected = composition.selectedPart == index
                 val row = LinearLayout(activity).apply {
@@ -551,6 +610,25 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
         }
         advisorPicker.setOnClickListener { if (!busy && ownsDrawer()) showAdvisorMenu() }
         subtitle.setOnClickListener { if (!busy && ownsDrawer()) showAdvisorMenu() }
+        /**
+         * The mode only decides what the next request should produce. It is deliberately not stored
+         * with the contact: practising is a habit, not a property of the person being answered.
+         */
+        fun showModeMenu() {
+            PopupMenu(activity, modeToggle).apply {
+                ReplyMode.entries.forEach { entry ->
+                    menu.add(0, entry.ordinal, entry.ordinal, "${entry.label} · ${entry.note}").isChecked = entry == mode
+                }
+                menu.setGroupCheckable(0, true, true)
+                setOnMenuItemClickListener { item ->
+                    if (busy || !ownsDrawer()) return@setOnMenuItemClickListener true
+                    val picked = ReplyMode.entries[item.itemId]
+                    if (picked != mode) { mode = picked; controls(false) }
+                    true
+                }
+            }.show()
+        }
+        modeToggle.setOnClickListener { if (!busy && ownsDrawer()) showModeMenu() }
         fun showRoleMenu(savedRoles: List<ReplyRole>, libraryAvailable: Boolean = true) {
             PopupMenu(activity, rolePicker).apply {
                 // Persisted presets and custom roles share the app's catalog; never resurrect deleted presets.
@@ -754,6 +832,9 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             if (busy || reference.loading) return
             if (hasUnsavedIdentityBackground()) { toast("请先保存身份和背景"); return }
             if (!composition.hasValidRelationship) { customRole.requestFocus(); toast("请先填写对方身份"); return }
+            if (!findTopics && mode.requiresDraft && draftAttempt.text.isBlank()) {
+                draftAttempt.requestFocus(); toast("批改模式需要你先写一条自己的回复"); return
+            }
             if (!ownsDrawer()) { window.dismiss(); return }
             if (!canGenerate()) { configure(); return }
             val current = reference.context?.copy(background = composition.background) ?: run { prepareHistory(composition.historyLimit); return }
@@ -767,6 +848,8 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             val relationship = composition.relationship
             val customRelationship = composition.activeCustomRelationship
             val advisor = composition.advisor
+            val requestedMode = mode
+            val attempt = draftAttempt.text.toString()
             val notes = instruction.text.toString()
             val time = if (findTopics) TopicCalendar.current() else null
             val requestedTopicKey = time?.let { topicKey(current, baselineDraft, it.date) }
@@ -801,7 +884,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
                     val client = ReplyHttpClient()
                     val topics = if (findTopics) client.findTopics(config, current, baselineDraft, notes, knowledge, relationship,
                         requireNotNull(time), previousTopics, customRelationship, advisor) else null
-                    val suggestion = if (findTopics) null else client.generate(config, current, baselineDraft, direction, knowledge, previous, focusId, relationship, customRelationship, advisor)
+                    val suggestion = if (findTopics) null else client.generate(config, current, baselineDraft, direction, knowledge, previous, focusId, relationship, customRelationship, advisor, requestedMode, attempt)
                     val activeConfig = ModulePrefs.replySettings()
                     if (!session.accepts(ticket, MessageSniffer.currentReplyTalker()) || !ownsDrawer() || !ModulePrefs.canGenerateReply) return@launch
                     if (!verifyAccount()) { window.dismiss(); return@launch }

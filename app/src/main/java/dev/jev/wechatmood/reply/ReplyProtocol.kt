@@ -9,7 +9,9 @@ import dev.jev.wechatmood.voice.VoiceState
 
 data class ReplySuggestion(val parts: List<String>, val reason: String) {
     init {
-        require(parts.size in 1..6 && parts.all { it.isNotBlank() })
+        // Zero parts is only valid for an analysis-only result (只拆解). Every parse path that
+        // promises messages still requires one to six.
+        require(parts.size in 0..6 && parts.all { it.isNotBlank() })
         require(parts.sumOf { it.length } + parts.size - 1 <= 8000)
     }
     constructor(text: String, reason: String) : this(listOf(text), reason)
@@ -33,10 +35,38 @@ object ReplyProtocol {
         输出结构、条数、语气词一律以本提示的 JSON 契约和产品任务为准。
     """.trimIndent()
 
+    /**
+     * Teaching modes also ask for the reading behind the answer. The skeleton keeps the same field
+     * names every time on purpose: structure that repeats is what turns into a habit.
+     */
+    private fun teaching(mode: ReplyMode): String {
+        if (mode == ReplyMode.ASSIST) return ""
+        val skeleton = """
+            本次是学习模式（${mode.label}）：除 replies 外还要返回 read、compare、drill、watch。
+            read 用固定五步，字段名不要改：
+              facts 我实际看到的事实，最多 3 条，只写她做了什么、说了什么；
+              guess 推测，最多 3 条，读起来就要像推测；
+              purpose 事务互动还是私人互动，一句话，含判断依据；
+              stage 阶段 1–7 的标签；trend 一句升温／持平／降温；
+              her_need 她此刻更想被怎么回应；my_goal 我这次想达成什么，来自 direction，没有就写「未说明」。
+            drill 是一句可迁移的原则，从资料的判断方式里提炼，不要写成口号；watch 是下次可以观察的一个点。
+        """.trimIndent()
+        val tail = when (mode) {
+            ReplyMode.READ -> "replies 必须是空数组 []：这一步留给我自己写，不要替我给话术。"
+            ReplyMode.PREDICT -> "compare 必须返回，针对 my_draft：keep 是我版本里对的地方（必须具体，不许客套），" +
+                "fix 是最多 2 条具体改法，verdict 一句话结论。replies 给建议的消息。"
+            ReplyMode.GRADE -> "compare 必须返回，针对 my_draft：keep／fix／verdict，另给 score（0–10 的整数）。" +
+                "replies 只放一条更接近我本人用词和口吻的版本，不要用书面语替换我的口语。"
+            ReplyMode.ASSIST -> ""
+        }
+        return "$skeleton\n$tail"
+    }
+
     fun payload(settings: ReplySettings, context: ReplyContext, draft: String, direction: String, knowledge: String,
         previous: String = "", focusMessageId: Long? = null,
         relationship: ReplyRelationship = ReplyRelationship.UNSPECIFIED, customRelationship: String = "",
-        advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT): JSONObject {
+        advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT, mode: ReplyMode = ReplyMode.DEFAULT,
+        myDraft: String = ""): JSONObject {
         val instructions = """
             ${ContactBackground.GUIDANCE}
             你是言外的聊天回复助手，回复逻辑来自${advisor.label}。
@@ -58,10 +88,11 @@ object ReplyProtocol {
             一条已足够就只给一条。数组是同一轮连续消息，不是多个候选版本，不含编号、引号说明、发送时间或分支；后续条目不能以对方尚未作出的回答为前提。
             只返回 JSON 对象：{"replies":["第一条可直接发送的消息","有必要时的下一条消息"],"reason":"一句简短理由或需要留意的地方"}。
             不输出思考过程或 Markdown。
+            ${teaching(mode)}
             ${bridge(advisor)}
             下面是参考资料，应用时以上述产品任务为准：
         """.trimIndent()
-        val evidence = evidence(context, draft, direction, previous, focusMessageId, relationship, customRelationship, advisor)
+        val evidence = evidence(context, draft, direction, previous, focusMessageId, relationship, customRelationship, advisor, mode, myDraft)
         return JSONObject().put("model", settings.model).put("stream", false).put("messages", JSONArray()
             .put(JSONObject().put("role", "system").put("content", "$instructions\n\n$knowledge"))
             .put(JSONObject().put("role", "user").put("content", evidence.toString())))
@@ -69,11 +100,12 @@ object ReplyProtocol {
 
     internal fun evidence(context: ReplyContext, draft: String, direction: String, previous: String = "",
         focusMessageId: Long? = null, relationship: ReplyRelationship = ReplyRelationship.UNSPECIFIED,
-        customRelationship: String = "", advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT): JSONObject {
+        customRelationship: String = "", advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT,
+        mode: ReplyMode = ReplyMode.DEFAULT, myDraft: String = ""): JSONObject {
         val custom = relationship.customValue(customRelationship)
         require(context.messages.none { it.voiceState == VoiceState.WAITING }) { "语音尚未完成转写" }
         require(relationship != ReplyRelationship.OTHER || custom.isNotBlank()) { "请先填写对方身份" }
-        return JSONObject().put("messages", JSONArray(context.messages.map {
+        val payload = JSONObject().put("messages", JSONArray(context.messages.map {
             JSONObject().put("id", it.id).put("speaker", it.speaker).put("time", formatTime(it.time)).put("text", it.text)
                 .put("message_source", if (it.voice != null) "voice_transcript" else "text").put("voice_state", it.voiceState.name)
         })).put("draft", draft.take(8000)).put("direction", direction.take(2000))
@@ -87,6 +119,9 @@ object ReplyProtocol {
             .put("unavailable_voice", context.messages.count { it.voiceState == VoiceState.FAILED })
             .put("relationship", JSONObject().put("id", relationship.id).put("label", relationship.displayLabel(custom)))
             .put("advisor", JSONObject().put("id", advisor.id).put("label", advisor.label))
+            .put("mode", JSONObject().put("id", mode.id).put("label", mode.label))
+        if (myDraft.isNotBlank()) payload.put("my_draft", myDraft.take(4000))
+        return payload
     }
 
     fun formatTime(time: Long): String = if (time <= 0) "未知" else
@@ -103,14 +138,26 @@ object ReplyProtocol {
         return JSONObject(raw)
     }
 
-    fun parse(body: String): ReplySuggestion = try {
+    fun parse(body: String, mode: ReplyMode = ReplyMode.DEFAULT, expectCompare: Boolean = false): ReplyOutcome = try {
         val result = responseObject(body)
         val parts = if (result.has("replies")) {
             val replies = result.getJSONArray("replies")
-            check(replies.length() in 1..6)
+            // 只拆解 must not hand back messages; every other mode returns one to six.
+            check(if (mode == ReplyMode.READ) replies.length() == 0 else replies.length() in 1..6)
             // Android org.json coerces getString values, unlike the JVM test implementation.
             (0 until replies.length()).map { (replies.get(it) as? String ?: error("Invalid reply part")).trim() }
-        } else listOf((result.get("reply") as? String ?: error("Invalid reply")).trim())
-        ReplySuggestion(parts, (result.opt("reason") as? String).orEmpty().trim().take(4000))
+        } else {
+            check(mode != ReplyMode.READ) { "拆解模式不应返回话术" }
+            listOf((result.get("reply") as? String ?: error("Invalid reply")).trim())
+        }
+        // Teaching fields are advisory unless the selected mode requires them below.
+        val analysis = runCatching { ReplyAnalysis.parse(result.optJSONObject("read")) }.getOrNull()
+        val compare = runCatching { ReplyCompare.parse(result.optJSONObject("compare")) }.getOrNull()
+        if (mode == ReplyMode.READ) check(analysis != null) { "缺少拆解" }
+        if (expectCompare) check(compare != null) { "缺少对比" }
+        ReplyOutcome(ReplySuggestion(parts, (result.opt("reason") as? String).orEmpty().trim().take(4000)),
+            ReplyTeaching(analysis, compare, result.text("drill"), result.text("watch")))
     } catch (_: Exception) { throw IllegalStateException("模型未返回完整的回复建议，请重试或换一个支持指令的聊天模型") }
+
+    private fun JSONObject.text(key: String): String = (opt(key) as? String).orEmpty().trim().take(200)
 }
