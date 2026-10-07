@@ -41,17 +41,19 @@ $sliceBuckets = [ordered]@{
     "examples-stage5-7.md" = @("阶段5", "阶段6", "阶段7", "挽回")
 }
 
+function Normalize-Text([string]$text) {
+    return ($text -replace "`r`n", "`n" -replace "`r", "`n")
+}
+
 function Read-NormalizedLines([string]$path) {
-    $text = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
-    $text = $text -replace "`r`n", "`n" -replace "`r", "`n"
+    $text = Normalize-Text ([System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8))
     return , ($text -split "`n")
 }
 
 function Write-Text([string]$path, [string]$text) {
     $parent = Split-Path -Parent $path
     if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
-    $normalized = ($text -replace "`r`n", "`n" -replace "`r", "`n")
-    [System.IO.File]::WriteAllText($path, $normalized, (New-Object System.Text.UTF8Encoding($false)))
+    [System.IO.File]::WriteAllText($path, (Normalize-Text $text), (New-Object System.Text.UTF8Encoding($false)))
 }
 
 function Remove-DroppedSections([string[]]$lines) {
@@ -216,9 +218,10 @@ if ($Check) {
         $relative = $file.FullName.Substring($temp.Length + 1)
         $committed = Join-Path $assets $relative
         if (-not (Test-Path $committed)) { $differences.Add("missing: $relative"); continue }
-        $left = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash
-        $right = (Get-FileHash -Algorithm SHA256 $committed).Hash
-        if ($left -ne $right) { $differences.Add("differs: $relative") }
+        # Compare text, not bytes: a Windows checkout may hold CRLF while the script writes LF.
+        $left = Normalize-Text ([System.IO.File]::ReadAllText($file.FullName, [System.Text.Encoding]::UTF8))
+        $right = Normalize-Text ([System.IO.File]::ReadAllText($committed, [System.Text.Encoding]::UTF8))
+        if ($left -cne $right) { $differences.Add("differs: $relative") }
     }
     Remove-Item -Recurse -Force $temp
     if ($differences.Count -gt 0) {
