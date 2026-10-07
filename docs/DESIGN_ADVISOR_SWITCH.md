@@ -209,24 +209,19 @@ object ReplyAdvisorDefault {
 
 ```
 app/src/main/assets/
-  goutoujunshi/                 # 原样保留，一个字节都不改（含 LICENSE / SOURCE.txt）
+  goutoujunshi/                 # 原样保留，一个字节都不改
   qingsheng/
-    LICENSE                     # MIT, Copyright (c) 2026 tomwong001（原样）
-    SOURCE.txt                  # 仓库、pin commit、上游版本号、衍生物生成规则、删除清单、sha256
-    upstream/                   # 上游 skill/ 逐字复制，仅供审计与 diff
-      SKILL.md
-      references/*.md
-    inject/                     # 真正注入模型的内容（只做「删除」，不做「改写」）
-      skill.md
-      stages.md
-      examples-stage1-2.md
-      examples-stage3-4.md
-      examples-stage5-7.md
+    LICENSE                     # 原样，MIT (c) 2026 tomwong001
+    SOURCE.txt                  # 仓库 / pin / 上游版本 / 删除清单 / 每文件 sha256 与体积
+    upstream/SKILL.md           # 上游原文，仅供审计与 diff
+    skill.md                    # 注入用：整节删除后其余逐字（26.8 KB → 21.2 KB）
+    refs/*.md                   # 上游 9 份 references 逐字复制
+    slices/*.md                 # 由 refs/examples-library.md 按其自身阶段标题切出
 ```
 
-为什么同时留 `upstream/` 和 `inject/`：**「原味」要可审计**。任何人都能 diff 出
-`inject/skill.md` 比 `upstream/SKILL.md` 少了哪几行，而不是「作者说改过就改过了」。
-重复的 26 KB 对 APK 体积无所谓。
+为什么同时留 `upstream/SKILL.md` 和 `skill.md`：**「原味」要可审计**。任何人都能 diff 出
+`skill.md` 比上游原文少了哪几节，而不是「作者说改过就改过了」。重复的 27 KB 对 APK 体积无所谓；
+references 不重复存放，只留一份。
 
 ### 5.2 生成脚本 `tools/fetch-qingsheng.ps1`
 
@@ -239,18 +234,19 @@ app/src/main/assets/
 5. 打印每个产物的字节数与「单次注入最坏组合」的总字节数；
 6. 把上游 sha256、删除清单、输出体积写进 `SOURCE.txt`。
 
-`inject/skill.md` 的删除清单（这些在 Android 模块里没有宿主）：
+`skill.md` 的删除清单——**只按标题整节删除，不做段落级编辑**，这是唯一需要人审的规则：
 
-| 删除的段落 | 原因 |
+| 整节删除（按标题匹配） | 原因 |
 |---|---|
-| `Preamble` 里的 bash version-check 代码块 | 没有 shell；言外自己已有「检查更新」 |
-| `UPGRADE_AVAILABLE` 升级提问流程 | 依赖 `AskUserQuestion` |
-| 开场白输出要求 | 每次生成都带自我介绍是灾难 |
-| `Gate A` 建档 / `~/.qingsheng/` 文件路径 | 没有可写文件系统；长期背景由言外的联系人背景承担 |
-| `computer use` 素材采集与动作边界 | 没有宿主内的窗口自动化 |
-| WebSearch 约会落地（场地/天气） | 言外不联网搜索；改为让用户在补充想法里自己写 |
-| 上下文归档（每次对话结束写档案） | 同上，无文件系统 |
-| 快捷指令表里的 shell 相关项 | 指令本身保留（支持 `/急`、`/换一个` 透传） |
+| `## Preamble（每次 skill 加载时自动执行）` | 没有 shell；版本检查与升级流程依赖 bash + `AskUserQuestion`，而言外自己已有「检查更新」 |
+| `## 开场白（每次 skill 首次被激活时输出）` | 每次生成都带自我介绍是灾难 |
+| `### 第负一步：上下文加载（每次对话最先执行）` | 读写 `~/.qingsheng/` 档案，无文件系统 |
+| `### 第负一步 · Gate A：识别档案对象 → 建档（先于任何分析）` | 同上；长期背景由言外的联系人背景承担 |
+| `## 上下文归档（每次对话结束时执行）` | 同上，无文件系统 |
+
+其余内容**逐字保留**——包括 computer use 素材采集、WebSearch 约会落地、快捷指令表这些
+在 app 里没有宿主的部分。它们的不适用性由桥接段统一声明（第 6 节），而不是靠删原文解决。
+这样删除规则只有一条可执行的定义（"按二级/三级标题整节删除"），任何人能复现、能 diff、能审计。
 
 **删除 ≠ 改写**：不碰任何一句措辞、不替换「兄弟/她」这类称呼。视角适配放在提示词桥接层（第 6 节）。
 
@@ -272,14 +268,14 @@ object ReplyKnowledgeCatalog {
         ) + when (relationship) { /* 原表不变 */ }
 
     private fun qingsheng(relationship: ReplyRelationship): List<String> {
-        val common = listOf("qingsheng/inject/skill.md")
+        val common = listOf("qingsheng/skill.md")
         val specific = when (relationship) {
-            ReplyRelationship.CRUSH -> listOf("stages.md", "examples-stage1-2.md")
-            ReplyRelationship.FLIRT -> listOf("examples-stage3-4.md")
-            ReplyRelationship.PARTNER -> listOf("examples-stage5-7.md", "recovery-playbook.md")
-            else -> listOf("examples-stage1-2.md")
+            ReplyRelationship.CRUSH -> listOf("refs/stages.md", "slices/examples-stage1-2.md")
+            ReplyRelationship.FLIRT -> listOf("refs/signals-tools.md", "slices/examples-stage3-4.md")
+            ReplyRelationship.PARTNER -> listOf("refs/mindset-concepts.md", "refs/recovery-playbook.md")
+            else -> listOf("refs/stages.md", "slices/examples-stage1-2.md")
         }
-        return common + specific.map { "qingsheng/inject/$it" }
+        return common + specific.map { "qingsheng/$it" }
     }
 }
 ```
@@ -287,12 +283,17 @@ object ReplyKnowledgeCatalog {
 情圣 + 非恋爱身份（用户在恋人聊天里手动给朋友选了情圣）不拦，但只加载通用段——**用户的选择永远被尊重**，
 产品层面只保证「默认值给出合理建议」。
 
-### 5.4 体积预算
+### 5.4 体积预算（P0a 已实测）
 
-- 单请求注入预算：**≤ 40 KB**（写成单测断言，超了就红）。
-- 情圣 `inject/skill.md` 目标：删掉约 4～5 KB → 约 21 KB 左右；再加 1 份参考（9～18 KB），
-  与现状军师 29.3 KB + 参考同量级。
-- 若 P1 引入「完整模式」，额外注入 2 份参考，届时把预算上调并同步文档。
+| 路由 | 实测 | 说明 |
+|---|---|---|
+| 军师最大 | **46.7 KB**（长辈：11-婚姻家庭 + 高情商拒绝） | 现状就有的量级，本次不动 |
+| 情圣最大 | **41.9 KB**（暧昧：signals-tools + 阶段3-4 切片） | 整节删除 + 切片让第二源与第一源同量级 |
+| 情圣最小 | **31.7 KB**（恋人：mindset-concepts + recovery-playbook） | |
+| 全路由上限 | **47.9 KB** | |
+
+单测守卫线设在 **56 KB**（约 17% 余量），作用是拦住「不小心把整本资料全塞进去」这类回归。
+`skill.md` 删除前 26.8 KB、删除后 21.2 KB；三份切片分别 9.8 / 11.5 / 7.6 KB。
 
 ---
 
@@ -492,7 +493,9 @@ P2 tag 自动发版（已内置）。
 |---|---|---|
 | **P0** | `ReplyAdvisor` + 联系人持久化(format 2) + catalog 双源 + 桥接段 + 抽屉三控件 + 双源资产与脚本 + 测试 | 可安装 APK，两个顾问都能用 |
 | **P1** | 默认顾问设置、角色库带顾问、许可弹窗双源、`/急`·`/换个角度` 按钮、`reason` 界面呈现优化 | 体验完整 |
-| **P2** | 「完整模式」档位（多注入参考）、情圣 7 阶段选择器注入 evidence、话题生成改用情圣 pivot 原则、release 签名 | 深度可用 |
+| **P2** | 教学模式 v1：只拆解 / 先猜后给 / 批改 + 骨架化拆解 + `drill` 卡片（见 [教学模式设计](DESIGN_LEARNING_MODE.md)） | 边用边学 |
+| **P3** | 复盘层：记录落库 + 结果回填 + 错题本 + 间隔重复 + APP「学习」页 | 有闭环反馈 |
+| **P4** | 「完整模式」档位、情圣 7 阶段选择器注入 evidence、话题生成改用 pivot 原则、release 签名 | 深度可用 |
 
 ---
 
@@ -517,3 +520,5 @@ P2 tag 自动发版（已内置）。
 2. **PARTNER（恋人）默认给谁**：情圣偏「推进」，长期关系里军师可能更稳。
 3. **P2 的「完整模式」**要不要——它是唯一会明显抬高 token 成本的功能。
 4. 走完 P0 之后，是**只留在你的 fork**，还是整理成 PR 提给上游 `YIRC99/yanwai`。
+
+教学模式（第二个需求）的设计与待拍板项见 [DESIGN_LEARNING_MODE.md](DESIGN_LEARNING_MODE.md)。

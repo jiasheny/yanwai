@@ -3,6 +3,10 @@ name: Android build
 on:
   push:
     branches: ["**"]
+    # Documentation-only pushes do not need a build. Scoped to docs/ on purpose:
+    # bundled knowledge under app/src/main/assets also uses .md files and must be built.
+    paths-ignore:
+      - "docs/**"
   pull_request:
   workflow_dispatch:
 
