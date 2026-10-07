@@ -13,17 +13,19 @@ class ReplyHttpClient(private val client: Call.Factory = OkHttpClient.Builder()
     .followRedirects(false).followSslRedirects(false).build()) {
     suspend fun generate(settings: ReplySettings, context: ReplyContext, draft: String, direction: String,
         knowledge: String, previous: String = "", focusMessageId: Long? = null,
-        relationship: ReplyRelationship = ReplyRelationship.UNSPECIFIED, customRelationship: String = ""): ReplySuggestion {
+        relationship: ReplyRelationship = ReplyRelationship.UNSPECIFIED, customRelationship: String = "",
+        advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT): ReplySuggestion {
         check(settings.isConfigured) { "请先在言外的「回复建议」中保存地址、API Key 和模型名" }
-        val payload = ReplyProtocol.payload(settings, context, draft, direction, knowledge, previous, focusMessageId, relationship, customRelationship)
+        val payload = ReplyProtocol.payload(settings, context, draft, direction, knowledge, previous, focusMessageId, relationship, customRelationship, advisor)
         return request(settings, payload, ReplyProtocol::parse)
     }
 
     suspend fun findTopics(settings: ReplySettings, context: ReplyContext, draft: String, notes: String,
         knowledge: String, relationship: ReplyRelationship, time: TopicTimeContext,
-        previous: List<TopicSuggestion> = emptyList(), customRelationship: String = ""): List<TopicSuggestion> {
+        previous: List<TopicSuggestion> = emptyList(), customRelationship: String = "",
+        advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT): List<TopicSuggestion> {
         check(settings.isConfigured) { "请先配置回复模型" }
-        return request(settings, TopicProtocol.payload(settings, context, draft, notes, knowledge, relationship, time, previous, customRelationship), TopicProtocol::parse)
+        return request(settings, TopicProtocol.payload(settings, context, draft, notes, knowledge, relationship, time, previous, customRelationship, advisor), TopicProtocol::parse)
     }
 
     internal suspend fun <T> request(settings: ReplySettings, payload: org.json.JSONObject, parse: (String) -> T): T =

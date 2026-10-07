@@ -14,7 +14,8 @@ data class TopicSuggestion(val title: String, val parts: List<String>, val reaso
 
 /** Only in process memory. Input changes require a new batch instead of relabeling old suggestions. */
 data class TopicKey(val fingerprint: String, val limit: Int, val relationship: ReplyRelationship,
-    val notes: String, val draft: String, val date: String, val customRelationship: String = "")
+    val notes: String, val draft: String, val date: String, val customRelationship: String = "",
+    val advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT)
 
 data class TopicBatch(val key: TopicKey, val items: List<TopicSuggestion>, val order: List<Int> = items.indices.shuffled(),
     val position: Int = 0) {

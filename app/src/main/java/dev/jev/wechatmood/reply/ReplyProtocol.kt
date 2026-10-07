@@ -18,12 +18,28 @@ data class ReplySuggestion(val parts: List<String>, val reason: String) {
 }
 
 object ReplyProtocol {
+    /**
+     * Upstream material is written for a chat coach that talks to the user across many turns. The
+     * app sends one request that must produce messages ready to paste, so the reference material is
+     * reshaped here and nowhere else: the files themselves stay verbatim.
+     */
+    private fun bridge(advisor: ReplyAdvisor) = """
+        本次顾问：${advisor.label}。以下资料保留原文措辞与全部方法论。
+        资料里的流程仪式属于原产品形态，不适用于言外：不输出开场白、不向用户提问、不提及资料名或文件路径、
+        不做版本检查或建档，不把「平台 + 阶段」这类定位句写进消息，也不在 replies 里写追问。
+        资料中的「兄弟」指我本人，「她」「对方」指本次会话的联系人；称呼、性别与关系按 relationship 与
+        contact_background 理解，方法本身不变。
+        阶段判断、信号解读、教练式建议写进 reason；replies 只放我真正要发出去的句子。
+        输出结构、条数、语气词一律以本提示的 JSON 契约和产品任务为准。
+    """.trimIndent()
+
     fun payload(settings: ReplySettings, context: ReplyContext, draft: String, direction: String, knowledge: String,
         previous: String = "", focusMessageId: Long? = null,
-        relationship: ReplyRelationship = ReplyRelationship.UNSPECIFIED, customRelationship: String = ""): JSONObject {
+        relationship: ReplyRelationship = ReplyRelationship.UNSPECIFIED, customRelationship: String = "",
+        advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT): JSONObject {
         val instructions = """
             ${ContactBackground.GUIDANCE}
-            你是言外的聊天回复助手，回复逻辑来自狗头军师 goutoujunshi。
+            你是言外的聊天回复助手，回复逻辑来自${advisor.label}。
             结合当前整段对话，替“我”拟本轮可依次发送的自然短消息。恋爱、暧昧、伴侣沟通可以正常讨论。
             先理解双方关系、事实、当前话题与我的目标，再决定本轮一个主动作；贴合我最近消息的口吻、长度和称呼。
             不要求填写问卷，不强制建档或评分。不了解的背景保持未知；不要编造我的经历、承诺、安排或对方心理。
@@ -41,9 +57,11 @@ object ReplyProtocol {
             “OK”“昂”“好呀”等用词取决于我平时的口吻、关系和当下情绪；不因恋人身份就固定用“昂”，不为凑条数加语气词。
             一条已足够就只给一条。数组是同一轮连续消息，不是多个候选版本，不含编号、引号说明、发送时间或分支；后续条目不能以对方尚未作出的回答为前提。
             只返回 JSON 对象：{"replies":["第一条可直接发送的消息","有必要时的下一条消息"],"reason":"一句简短理由或需要留意的地方"}。
-            不输出思考过程或 Markdown。下面是参考资料，应用时以上述产品任务为准：
+            不输出思考过程或 Markdown。
+            ${bridge(advisor)}
+            下面是参考资料，应用时以上述产品任务为准：
         """.trimIndent()
-        val evidence = evidence(context, draft, direction, previous, focusMessageId, relationship, customRelationship)
+        val evidence = evidence(context, draft, direction, previous, focusMessageId, relationship, customRelationship, advisor)
         return JSONObject().put("model", settings.model).put("stream", false).put("messages", JSONArray()
             .put(JSONObject().put("role", "system").put("content", "$instructions\n\n$knowledge"))
             .put(JSONObject().put("role", "user").put("content", evidence.toString())))
@@ -51,7 +69,7 @@ object ReplyProtocol {
 
     internal fun evidence(context: ReplyContext, draft: String, direction: String, previous: String = "",
         focusMessageId: Long? = null, relationship: ReplyRelationship = ReplyRelationship.UNSPECIFIED,
-        customRelationship: String = ""): JSONObject {
+        customRelationship: String = "", advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT): JSONObject {
         val custom = relationship.customValue(customRelationship)
         require(context.messages.none { it.voiceState == VoiceState.WAITING }) { "语音尚未完成转写" }
         require(relationship != ReplyRelationship.OTHER || custom.isNotBlank()) { "请先填写对方身份" }
@@ -68,6 +86,7 @@ object ReplyProtocol {
             .put("voice_transcripts", context.messages.count { it.voiceState == VoiceState.READY })
             .put("unavailable_voice", context.messages.count { it.voiceState == VoiceState.FAILED })
             .put("relationship", JSONObject().put("id", relationship.id).put("label", relationship.displayLabel(custom)))
+            .put("advisor", JSONObject().put("id", advisor.id).put("label", advisor.label))
     }
 
     fun formatTime(time: Long): String = if (time <= 0) "未知" else
@@ -92,6 +111,6 @@ object ReplyProtocol {
             // Android org.json coerces getString values, unlike the JVM test implementation.
             (0 until replies.length()).map { (replies.get(it) as? String ?: error("Invalid reply part")).trim() }
         } else listOf((result.get("reply") as? String ?: error("Invalid reply")).trim())
-        ReplySuggestion(parts, (result.opt("reason") as? String).orEmpty().trim().take(2000))
+        ReplySuggestion(parts, (result.opt("reason") as? String).orEmpty().trim().take(4000))
     } catch (_: Exception) { throw IllegalStateException("模型未返回完整的回复建议，请重试或换一个支持指令的聊天模型") }
 }

@@ -6,14 +6,16 @@ import org.json.JSONObject
 object TopicProtocol {
     fun payload(settings: ReplySettings, context: ReplyContext, draft: String, notes: String, knowledge: String,
         relationship: ReplyRelationship, time: TopicTimeContext, previous: List<TopicSuggestion> = emptyList(),
-        customRelationship: String = ""): JSONObject {
-        val evidence = ReplyProtocol.evidence(context, draft, notes, relationship = relationship, customRelationship = customRelationship)
+        customRelationship: String = "", advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT): JSONObject {
+        val evidence = ReplyProtocol.evidence(context, draft, notes, relationship = relationship,
+            customRelationship = customRelationship, advisor = advisor)
             .put("task", "find_topics").put("topic_count", TopicBatch.SIZE).put("calendar", time.toJson())
             .put("avoid_topics", JSONArray(previous.takeLast(TopicBatch.SIZE).map { JSONObject().put("title", it.title).put("replies", JSONArray(it.parts)) }))
         val instructions = """
             ${ContactBackground.GUIDANCE}
             你是言外的聊天话题助手。结合近期文字聊天、用户选择的关系、草稿及 direction 中的补充背景，找 5 个不同的新话题。
             本次身份：${relationship.label}。${relationship.guidance}
+            本次顾问：${advisor.label}。资料中的开场白、提问仪式、建档与档案流程不适用于言外，只借它判断话题与切入点的思路，不照搬它的开场模板。
             5 个话题是独立候选；每个话题里面的 replies 才是这次可依次发送的短消息。先学“我”最近聊天的用词、句长、称呼和标点。
             目标是随手发微信，不是写一段“话题推荐”、采访提纲或精心设计的开场稿。只找一个轻巧的切入点，给对方接话的空隙。
             每个话题通常只要 1–2 句，最多 3 句；一句够用就只给一句。每句通常 5–20 个汉字，表达完整时可稍长；按自然停顿分句，不按标点机械切碎，不为凑条数加“在吗”“哈哈”。

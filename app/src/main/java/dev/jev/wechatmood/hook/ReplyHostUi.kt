@@ -128,7 +128,8 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
         val remembered = history.recall(selectedTalker, focusMessageId, owner.historyScope)
         val group = selectedTalker.endsWith("@chatroom")
         val composition = ReplyComposition(remembered, if (group) ReplyIdentitySetting(
-            remembered?.relationship ?: ReplyRelationship.UNSPECIFIED, remembered?.customRelationship.orEmpty()) else identity,
+            remembered?.relationship ?: ReplyRelationship.UNSPECIFIED, remembered?.customRelationship.orEmpty(),
+            advisor = remembered?.advisor ?: identity.advisor) else identity,
             preferredLimit, contactBackground)
         var selectedIdentity = identity
         val reference = ReplyHistorySelection(selectedTalker, remembered?.context?.takeIf { it.requestedMessages == preferredLimit })
@@ -314,7 +315,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
                 composition.relationship != selectedIdentity.relationship ||
                 composition.activeCustomRelationship != selectedIdentity.relationship.customValue(selectedIdentity.customText))
         fun topicKey(current: ReplyContext, draft: String, date: String) = TopicKey(current.fingerprint, current.requestedMessages,
-            composition.relationship, instruction.text.toString(), draft, date, composition.activeCustomRelationship)
+            composition.relationship, instruction.text.toString(), draft, date, composition.activeCustomRelationship, composition.advisor)
         fun preview(text: CharSequence, empty: String) = text.toString().trim().replace(Regex("\\s+"), " ").take(22).ifBlank { empty }
         fun collapseEditors() {
             roleExpanded = false; instructionExpanded = false
@@ -448,7 +449,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             if (group || !ownsDrawer()) return
             if (owner.key == null) { toast("账号或联系人尚未确认，本次身份不会保存"); return }
             val revision = ++saveRevision
-            val value = ReplyIdentitySetting(composition.relationship, composition.customRelationship)
+            val value = ReplyIdentitySetting(composition.relationship, composition.customRelationship, advisor = composition.advisor)
             // The immutable owner and original verified page remain attached even after closing/switching.
             ReplyIdentityBridge.save(activity, owner, value, { ReplyDatabaseHistory.replyAccount(live) }) { saved ->
                 activity.runOnUiThread {
@@ -461,7 +462,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             if (!composition.hasValidRelationship) { customRole.requestFocus(); toast("请先填写对方身份"); return@setOnClickListener }
             if (owner.key == null) { toast("账号或联系人尚未确认，请重新打开后保存"); return@setOnClickListener }
             val identityValue = ReplyIdentitySetting(composition.relationship, composition.customRelationship,
-                selectedIdentity.roleId, selectedIdentity.roleRevision)
+                selectedIdentity.roleId, selectedIdentity.roleRevision, composition.advisor)
             val backgroundText = identityBackground.text.toString()
             ++saveRevision
             savingRoleWindow = window
@@ -719,6 +720,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             val baselineDraft = input.text.toString()
             val relationship = composition.relationship
             val customRelationship = composition.activeCustomRelationship
+            val advisor = composition.advisor
             val notes = instruction.text.toString()
             val time = if (findTopics) TopicCalendar.current() else null
             val requestedTopicKey = time?.let { topicKey(current, baselineDraft, it.date) }
@@ -742,7 +744,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
             job = scope.launch {
                 try {
                     if (!verifyAccount()) { window.dismiss(); return@launch }
-                    val knowledge = withContext(Dispatchers.IO) { ReplyKnowledge.load(activity, relationship) }
+                    val knowledge = withContext(Dispatchers.IO) { ReplyKnowledge.load(activity, relationship, advisor) }
                     // Upload only the prepared evidence, after rechecking configuration, conversation and settings.
                     ensureActive()
                     if (!session.accepts(ticket, MessageSniffer.currentReplyTalker()) || !ownsDrawer() || !ModulePrefs.canGenerateReply || current.background != composition.background) return@launch
@@ -752,8 +754,8 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
                     }
                     val client = ReplyHttpClient()
                     val topics = if (findTopics) client.findTopics(config, current, baselineDraft, notes, knowledge, relationship,
-                        requireNotNull(time), previousTopics, customRelationship) else null
-                    val suggestion = if (findTopics) null else client.generate(config, current, baselineDraft, direction, knowledge, previous, focusId, relationship, customRelationship)
+                        requireNotNull(time), previousTopics, customRelationship, advisor) else null
+                    val suggestion = if (findTopics) null else client.generate(config, current, baselineDraft, direction, knowledge, previous, focusId, relationship, customRelationship, advisor)
                     val activeConfig = ModulePrefs.replySettings()
                     if (!session.accepts(ticket, MessageSniffer.currentReplyTalker()) || !ownsDrawer() || !ModulePrefs.canGenerateReply) return@launch
                     if (!verifyAccount()) { window.dismiss(); return@launch }
@@ -761,7 +763,7 @@ class ReplyHostUi(private val activity: Activity, createAnalysisControl: () -> V
                         state.text = "配置已改变，请重试"; return@launch
                     }
                     val accepted = if (topics != null) composition.acceptTopics(current, topics, requireNotNull(requestedTopicKey), focusId)
-                        else composition.accept(current, requireNotNull(suggestion), notes, focusId, relationship, customRelationship)
+                        else composition.accept(current, requireNotNull(suggestion), notes, focusId, relationship, customRelationship, advisor)
                     if (!accepted) return@launch
                     snapshot = current
                     reason.visibility = View.GONE; reasonToggle.text = "为什么这样回 ▾"; renderParts()

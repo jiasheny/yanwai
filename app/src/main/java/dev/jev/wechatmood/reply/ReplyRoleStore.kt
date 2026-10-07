@@ -7,9 +7,9 @@ import java.util.UUID
 
 /** Management IDs stay local. Neither names nor backgrounds belong in diagnostic output. */
 class ReplyRole(val id: String, val name: String, val background: String, val revision: String,
-    val relationship: ReplyRelationship = ReplyRelationship.OTHER) {
+    val relationship: ReplyRelationship = ReplyRelationship.OTHER, val advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT) {
     val fromContact get() = id.startsWith("contact:")
-    fun identity() = ReplyIdentitySetting(relationship, if (relationship == ReplyRelationship.OTHER) name else "", id, revision)
+    fun identity() = ReplyIdentitySetting(relationship, if (relationship == ReplyRelationship.OTHER) name else "", id, revision, advisor)
     init {
         require(id.matches(Regex("role:[0-9a-f-]{36}|contact:[0-9a-f]{64}")))
         require(name.isNotBlank() && name.length <= ReplyRelationship.MAX_CUSTOM_LENGTH)
@@ -17,13 +17,14 @@ class ReplyRole(val id: String, val name: String, val background: String, val re
     }
     fun encode(includeBackground: Boolean = true): String = JSONObject().put("id", id).put("name", name)
         .put("background", if (includeBackground) background else "").put("revision", revision)
-        .put("relationship", relationship.id).toString()
+        .put("relationship", relationship.id).put("advisor", advisor.id).toString()
     companion object {
         fun decode(payload: String): ReplyRole {
             require(payload.length <= 16000)
             val json = JSONObject(payload)
             return ReplyRole(json.getString("id"), json.getString("name"), json.getString("background"), json.getString("revision"),
-                ReplyRelationship.entries.firstOrNull { it.id == json.optString("relationship") } ?: ReplyRelationship.OTHER)
+                ReplyRelationship.entries.firstOrNull { it.id == json.optString("relationship") } ?: ReplyRelationship.OTHER,
+                ReplyAdvisor.of(json.optString("advisor")))
         }
     }
 }
@@ -89,13 +90,14 @@ class ReplyRoleStore(private val db: AnalysisCacheDatabase, private val identiti
                 identity.relationship == ReplyRelationship.OTHER && identity.customText.isBlank()) return@synchronized null
             val background = identities.background(key)
             ReplyRole(id, identity.relationship.displayLabel(identity.customText), background.text,
-                AnalysisCacheKey.digest(identity.encode(), background.encode()))
+                AnalysisCacheKey.digest(identity.encode(), background.encode()), advisor = identity.advisor)
         } else {
             require(id.matches(Regex("role:[0-9a-f-]{36}")))
             db.query("SELECT payload FROM reply_roles WHERE role_id = ?", listOf(id))?.let(ReplyRole::decode)
         }
     }
-    fun save(id: String?, name: String, background: String, expectedRevision: String? = null): ReplyRole = synchronized(identities) {
+    fun save(id: String?, name: String, background: String, expectedRevision: String? = null,
+        advisor: ReplyAdvisor? = null): ReplyRole = synchronized(identities) {
         val clean = name.trim()
         require(clean.isNotEmpty() && clean.length <= ReplyRelationship.MAX_CUSTOM_LENGTH) { "角色名称请填写 1–40 个字" }
         require(clean.none { it.isISOControl() }) { "角色名称不能换行" }
@@ -103,16 +105,18 @@ class ReplyRoleStore(private val db: AnalysisCacheDatabase, private val identiti
         val previous = id?.let { checkNotNull(find(it)) { "角色已删除，请刷新列表" } }
         check(previous == null || previous.revision == expectedRevision) { "角色已被修改，请重新打开编辑" }
         if (previous == null) require(templates().size < 100) { "最多保存 100 个角色，请先整理已有角色" }
+        val resolved = advisor ?: previous?.advisor ?: ReplyAdvisor.DEFAULT
         transaction {
             val target = id ?: "role:${UUID.randomUUID()}"
             if (previous?.fromContact == true) {
                 val key = ReplyContactKey(target.removePrefix("contact:"))
                 val identity = identities.find(key)
-                identities.save(key, if (clean == previous.name) identity else ReplyIdentitySetting(ReplyRelationship.OTHER, clean))
+                identities.save(key, if (clean == previous.name) identity else
+                    ReplyIdentitySetting(ReplyRelationship.OTHER, clean, advisor = resolved))
                 identities.saveBackground(key, background)
             } else {
                 val relationship = previous?.takeIf { it.name == clean }?.relationship ?: ReplyRelationship.OTHER
-                val value = ReplyRole(target, clean, background, UUID.randomUUID().toString(), relationship)
+                val value = ReplyRole(target, clean, background, UUID.randomUUID().toString(), relationship, resolved)
                 db.execute("INSERT OR REPLACE INTO reply_roles(role_id, payload) VALUES(?, ?)", listOf(target, value.encode()))
             }
             db.execute("UPDATE reply_role_revision SET revision = revision + 1 WHERE id = 1")
@@ -130,7 +134,7 @@ class ReplyRoleStore(private val db: AnalysisCacheDatabase, private val identiti
         val id = previous?.id ?: "role:${UUID.randomUUID()}"
         if (previous == null) require(templates().size < 100) { "最多保存 100 个角色，请先整理已有角色" }
         transaction {
-            val role = ReplyRole(id, name, text, UUID.randomUUID().toString(), identity.relationship)
+            val role = ReplyRole(id, name, text, UUID.randomUUID().toString(), identity.relationship, identity.advisor)
             db.execute("INSERT OR REPLACE INTO reply_roles(role_id, payload) VALUES(?, ?)", listOf(id, role.encode()))
             identities.save(key, role.identity())
             identities.saveBackground(key, text)

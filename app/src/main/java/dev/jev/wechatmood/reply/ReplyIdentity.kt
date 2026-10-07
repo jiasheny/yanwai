@@ -7,22 +7,26 @@ import java.io.Closeable
 
 /** Raw editor text is retained, including an unfinished custom identity. */
 data class ReplyIdentitySetting(val relationship: ReplyRelationship = ReplyRelationship.UNSPECIFIED, val customText: String = "",
-    val roleId: String? = null, val roleRevision: String? = null) {
+    val roleId: String? = null, val roleRevision: String? = null, val advisor: ReplyAdvisor = ReplyAdvisor.DEFAULT) {
     init {
         require(customText.length <= ReplyRelationship.MAX_CUSTOM_LENGTH)
         require((roleId == null) == (roleRevision == null))
         require(roleId == null || roleId.matches(Regex("role:[0-9a-f-]{36}")))
         require(roleRevision == null || roleRevision.length in 1..64)
     }
-    fun encode(): String = JSONObject().put("format", 1).put("role", relationship.id).put("text", customText)
-        .put("roleId", roleId).put("roleRevision", roleRevision).toString()
+    /** Format 2 adds the advisor. Format 1 rows stay readable and simply take the default. */
+    fun encode(): String = JSONObject().put("format", FORMAT).put("role", relationship.id).put("text", customText)
+        .put("roleId", roleId).put("roleRevision", roleRevision).put("advisor", advisor.id).toString()
     companion object {
+        const val FORMAT = 2
         fun decode(payload: String): ReplyIdentitySetting {
             require(payload.length <= 1024)
             val json = JSONObject(payload)
-            require(json.getInt("format") == 1)
+            val format = json.getInt("format")
+            require(format in 1..FORMAT)
             return ReplyIdentitySetting(ReplyRelationship.entries.single { it.id == json.getString("role") }, json.getString("text"),
-                json.optString("roleId").takeIf { it.isNotEmpty() }, json.optString("roleRevision").takeIf { it.isNotEmpty() })
+                json.optString("roleId").takeIf { it.isNotEmpty() }, json.optString("roleRevision").takeIf { it.isNotEmpty() },
+                if (format >= 2) ReplyAdvisor.of(json.optString("advisor")) else ReplyAdvisor.DEFAULT)
         }
     }
 }
